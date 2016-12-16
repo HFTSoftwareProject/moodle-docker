@@ -1,81 +1,59 @@
+# Dockerfile for moodle instance. more dockerish version of https://github.com/sergiogomez/docker-moodle
+# Forked from Jon Auer's docker version. https://github.com/jda/docker-moodle
 FROM ubuntu:16.04
-MAINTAINER Fer Uria <fauria@gmail.com>
-LABEL Description="Cutting-edge LAMP stack, based on Ubuntu 16.04 LTS. Includes .htaccess support and popular PHP7 features, including composer and mail() function." \
-	License="Apache License 2.0" \
-	Usage="docker run -d -p [HOST WWW PORT NUMBER]:80 -p [HOST DB PORT NUMBER]:3306 -v [HOST WWW DOCUMENT ROOT]:/var/www/html -v [HOST DB DOCUMENT ROOT]:/var/lib/mysql fauria/lamp" \
-	Version="1.0"
+MAINTAINER Jonathan Hardison <jmh@jonathanhardison.com>
+#Original Maintainer Jon Auer <jda@coldshore.com>
 
-RUN apt-get update
-RUN apt-get upgrade -y
+#Proxy
+ENV http_proxy 'http://proxy.hft-stuttgart.de:80'
+ENV https_proxy 'http://proxy.hft-stuttgart.de:80'
 
-COPY debconf.selections /tmp/
-RUN debconf-set-selections /tmp/debconf.selections
+VOLUME ["/var/moodledata"]
+EXPOSE 80 443
+COPY moodle-config.php /var/www/html/config.php
 
-RUN apt-get install -y \
-	php7.0 \
-	php7.0-bz2 \
-	php7.0-cgi \
-	php7.0-cli \
-	php7.0-common \
-	php7.0-curl \
-	php7.0-dev \
-	php7.0-enchant \
-	php7.0-fpm \
-	php7.0-gd \
-	php7.0-gmp \
-	php7.0-imap \
-	php7.0-interbase \
-	php7.0-intl \
-	php7.0-json \
-	php7.0-ldap \
-	php7.0-mcrypt \
-	php7.0-mysql \
-	php7.0-odbc \
-	php7.0-opcache \
-	php7.0-pgsql \
-	php7.0-phpdbg \
-	php7.0-pspell \
-	php7.0-readline \
-	php7.0-recode \
-	php7.0-snmp \
-	php7.0-sqlite3 \
-	php7.0-sybase \
-	php7.0-tidy \
-	php7.0-xmlrpc \
-	php7.0-xsl \
-	php7.0-zip 
-RUN apt-get install apache2 libapache2-mod-php7.0 -y
-RUN apt-get install mariadb-common mariadb-server mariadb-client -y
-RUN apt-get install postfix -y
-RUN apt-get install git composer nano tree vim curl ftp -y
+# Keep upstart from complaining
+# RUN dpkg-divert --local --rename --add /sbin/initctl
+# RUN ln -sf /bin/true /sbin/initctl
 
-ENV LOG_STDOUT **Boolean**
-ENV LOG_STDERR **Boolean**
-ENV LOG_LEVEL warn
-ENV ALLOW_OVERRIDE All
-ENV DATE_TIMEZONE UTC
-ENV TERM dumb
+# Let the container know that there is no tty
+ENV DEBIAN_FRONTEND noninteractive
 
-COPY index.php /var/www/html/
-COPY run.sh /usr/sbin/
+# Database info
+#ENV MYSQL_HOST 127.0.0.1
+#ENV MYSQL_USER moodle
+#ENV MYSQL_PASSWORD moodle
+#ENV MYSQL_DB moodle
+ENV MOODLE_URL http://10.40.10.59
 
-RUN a2enmod rewrite
-RUN ln -s /usr/bin/nodejs /usr/bin/node
-RUN chmod +x /usr/sbin/run.sh
-RUN chown -R www-data:www-data /var/www/html
+ADD ./foreground.sh /etc/apache2/foreground.sh
 
-VOLUME /var/log/httpd
-VOLUME /var/lib/mysql
-VOLUME /var/log/mysql
+RUN apt-get update && \
+	apt-get -y install mysql-client pwgen python-setuptools curl git unzip apache2 php \
+		php-gd libapache2-mod-php postfix wget supervisor php-pgsql curl libcurl3 \
+		libcurl3-dev php-curl php-xmlrpc php-intl php-mysql git-core php-xml php-mbstring php-zip php-soap && \
+	cd /tmp && \
+	git clone -b MOODLE_31_STABLE https://github.com/moodle/moodle.git --depth=1 && \
+	mv /tmp/moodle/* /var/www/html/ && \
+	rm /var/www/html/index.html && \
 
-# Install moodle and mojec plugin
-RUN git clone --depth=1 -b MOODLE_31_STABLE git://git.moodle.org/moodle.git /var/www/html/moodle
-RUN mkdir /home/moodledata && \
-    chmod 777 /home/moodledata
-RUN git clone https://github.com/HFTSoftwareProject/moodle-assignsubmission_mojec.git /var/www/html/moodle/mod/assign/submission/mojec
-RUN chmod -R 777 /var/www/html/moodle
+	chown -R www-data:www-data /var/www/html && \
+	chmod +x /etc/apache2/foreground.sh
 
-EXPOSE 80
-EXPOSE 3306
+RUN git clone https://github.com/HFTSoftwareProject/moodle-assignsubmission_mojec.git /var/www/html/mod/assign/submission/mojec
+			
+# Enable SSL, moodle requires it
+# RUN a2enmod ssl && a2ensite default-ssl # if using proxy, don't need actually secure connection
 
-CMD ["/usr/sbin/run.sh"]
+# Cleanup
+RUN apt-get clean autoclean && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/lib/dpkg/* /var/lib/cache/* /var/lib/log/*
+
+
+CMD ["/etc/apache2/foreground.sh"]
+
+# RUN easy_install supervisor
+# ADD ./start.sh /start.sh
+# ADD ./supervisord.conf /etc/supervisord.conf
+# RUN chmod 755 /start.sh /etc/apache2/foreground.sh
+# EXPOSE 22 80
+# CMD ["/bin/bash", "/start.sh"]
