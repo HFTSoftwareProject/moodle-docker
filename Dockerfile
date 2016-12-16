@@ -24,7 +24,7 @@ ENV DEBIAN_FRONTEND noninteractive
 #ENV MYSQL_USER moodle
 #ENV MYSQL_PASSWORD moodle
 #ENV MYSQL_DB moodle
-ENV MOODLE_URL http://10.40.10.59
+ENV MOODLE_URL http://10.40.10.5
 
 ADD ./foreground.sh /etc/apache2/foreground.sh
 
